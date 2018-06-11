@@ -1,0 +1,124 @@
+= Step's to Run on OpenShift
+
+[source, bash]
+.*1 - 创建一个 package*
+----
+$ wsk -i list
+Entities in namespace: default
+packages
+/whisk.system/alarmsWeb                                       private
+/whisk.system/alarms                                                   shared
+/whisk.system/conversions                                       shared
+/whisk.system/kelvin                                                   private
+actions
+/whisk.system/alarmsWeb/alarmWebAction                      private nodejs:6
+/whisk.system/alarms/interval                                          private nodejs:6
+/whisk.system/alarms/once                                              private nodejs:6
+/whisk.system/alarms/alarm                                             private nodejs:6
+/whisk.system/invokerHealthTestAction0                            private
+triggers
+Rules
+
+$ wsk -i package create sequence
+ok: created package sequence
+----
+
+[source, bash]
+.*2 - 部署 splitter*
+----
+$ mvn clean install
+
+$ wsk -i action create --web=true sequence/splitter target/splitter-1.0.jar --main com.sample.App
+
+$ wsk -i action get sequence/splitter --url
+https://openwhisk-faas.192.168.42.102.nip.io/api/v1/web/whisk.system/sequence/splitter
+
+$ wsk -i action invoke sequence/splitter --result --param text "openshift,openstack,ceph,jboss,linux"
+{
+    "result": [
+        "openshift",
+        "openstack",
+        "ceph",
+        "jboss",
+        "linux"
+    ]
+}
+
+$ curl -k https://openwhisk-faas.192.168.42.102.nip.io/api/v1/web/whisk.system/sequence/splitter.json?text="openshift,openstack,ceph,jboss,linux"
+{
+  "result": ["openshift", "openstack", "ceph", "jboss", "linux"]
+}
+----
+
+[source, bash]
+.*3 - 部署 sorter*
+----
+$ wsk -i action create --web=true sequence/sorter sorter.py
+ok: created action sequence/sorter
+
+$ wsk -i action list | grep sequence
+/whisk.system/sequence/sorter                                          private python:2
+/whisk.system/sequence/splitter                                        private java
+
+$ wsk -i action invoke sequence/sorter --result --param-file ./split.json
+{
+    "result": [
+        "ceph",
+        "jboss",
+        "linux",
+        "openshift",
+        "openstack"
+    ]
+}
+----
+
+[source, bash]
+.*4 - 部署 uppercase*
+----
+$ wsk -i action create sequence/uppercase uppercase.js
+ok: created action sequence/uppercase
+
+$ wsk -i action list | grep sequence
+/whisk.system/sequence/uppercase                                  private nodejs:6
+/whisk.system/sequence/sorter                                          private python:2
+/whisk.system/sequence/splitter                                        private java
+
+$ wsk -i action invoke sequence/uppercase --result --param-file ./sorted.json
+{
+    "result": [
+        "CEPH",
+        "JBOSS",
+        "LINUX",
+        "OPENSHIFT",
+        "OPENSTACK"
+    ]
+}
+----
+
+[source, bash]
+.*5 - 创建 sequence, 并测试*
+----
+$ wsk -i action create --web=true strings --sequence sequence/splitter,sequence/sorter,sequence/uppercase
+
+$ wsk -i action list | grep strings
+/whisk.system/strings                                                  private sequence
+
+$ wsk -i action invoke strings --result --param text "openshift,openstack,ceph,jboss,linux"
+{
+    "result": [
+        "CEPH",
+        "JBOSS",
+        "LINUX",
+        "OPENSHIFT",
+        "OPENSTACK"
+    ]
+}
+
+$ wsk -i action get strings --url
+https://openwhisk-faas.192.168.42.102.nip.io/api/v1/web/whisk.system/default/strings
+$ curl -k https://openwhisk-faas.192.168.42.102.nip.io/api/v1/web/whisk.system/default/strings.json?text="openshift,openstack,ceph,jboss,linux"
+{
+  "result": ["CEPH", "JBOSS", "LINUX", "OPENSHIFT", "OPENSTACK"]
+}
+----
+

@@ -1,0 +1,9 @@
+{
+    "result": [
+        "openshift",
+        "openstack",
+        "ceph",
+        "jboss",
+        "linux"
+    ]
+}
